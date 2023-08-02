@@ -1,4 +1,6 @@
-﻿using InformAPI.Model;
+﻿
+using InformAPI.Helpers;
+using InformAPI.Model;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +15,12 @@ namespace InformAPI.Controllers
     [EnableCors("default")]
     public class LoginController : ControllerBase
     {
-        RegistrationContext _loginContext;
-        public LoginController(RegistrationContext loginContext)
+        private  RegistrationContext _loginContext;
+        private IConfiguration _config;
+        public LoginController(RegistrationContext loginContext, IConfiguration configuration)
         {
             _loginContext = loginContext;
+            _config = configuration;
         }
         [HttpGet]
         public async Task<IActionResult> GetReg()
@@ -25,22 +29,30 @@ namespace InformAPI.Controllers
             return Ok(reg);
         }
 
+        private string GenerateToken()
+        {
+            var securitykey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:key"]));
+            var credential = new SigningCredentials(securitykey, SecurityAlgorithms.HmacSha256);
+            var token = new JwtSecurityToken(
+               _config["Jwt:Issuer"],
+               _config["Jwt:Audience"], null,
+                expires: DateTime.Now.AddMinutes(20),
+                signingCredentials: credential
+            );
+            return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
         [HttpPost]
         public async Task<IActionResult> PostReg(Login log)
         {
-            var issuer = _loginContext["Jwt:Issuer"];
-            var audience = configuration["Jwt:Audience"];
-            var key = Encoding.UTF8.GetBytes(configuration["Jwt:Key"]);
-            var signingCredentials = new SigningCredentials(
-                                    new SymmetricSecurityKey(key),
-                                    SecurityAlgorithms.HmacSha512Signature
-                                );
-
-
+            log.Password = EncDscPassword.EncryptPassword(log.Password);
             _loginContext.Logins.Add(log);
             await _loginContext.SaveChangesAsync();
-            return Ok();
+            var token = GenerateToken();
+            return Ok(new {token=token,user=log.User});
         }
+
+
 
 
 
